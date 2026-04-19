@@ -1,11 +1,12 @@
 import os
 import argparse
+import sys
+
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from prompts import system_prompt
 from call_function import available_functions, call_function
-import time
 
 def main():
     parser = argparse.ArgumentParser(description="AI Code Assistant")
@@ -23,7 +24,18 @@ def main():
     if args.verbose:
         print(f"User prompt: {args.user_prompt}\n")
 
-    generate_content(client, messages, args.verbose)
+    for _ in range(20):
+        response, function_results = generate_content(client, messages, args.verbose)
+        if response.candidates:
+            for c in response.candidates:
+                messages.append(c.content)
+        if function_results:
+            messages.append(types.Content(role="user", parts=function_results))
+        if not response.function_calls:
+            break
+    else:
+        print("reached end of loop with no final response")
+        sys.exit(1)
 
 
 def generate_content(client, messages, verbose):
@@ -44,23 +56,23 @@ def generate_content(client, messages, verbose):
     if not response.function_calls:
         print("Response:")
         print(response.text)
-        return
+        return (response, [])
 
     function_results = []
     for function_call in response.function_calls:
         print(f"Calling function: {function_call.name}({function_call.args})")
         function_call_result = call_function(function_call)
-        if not function_call_result.parts:
-            raise Exception("Error: empty parts list returned from function call")
-        if function_call_result.parts[0].function_response is None:
-            raise Exception("Error: No function response from function call")
-        if function_call_result.parts[0].function_response.response is None:
-            raise Exception("Error: No function result from function call")
-
-        function_results.append(function_call_result.parts[0])
-
+        if (
+                not function_call_result.parts
+                or not function_call_result.parts[0].function_response
+                or not function_call_result.parts[0].function_response.response
+                ):
+            raise RuntimeError(f"Empty function response for {function_call}")
         if verbose:
             print(f"-> {function_call_result.parts[0].function_response.response}")
+
+        function_results.append(function_call_result.parts[0])
+    return (response, function_results)
 
 if __name__ == "__main__":
     main()
