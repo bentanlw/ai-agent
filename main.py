@@ -5,6 +5,7 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from config import MAX_ITER
 from prompts import system_prompt
 from call_function import available_functions, call_function
 
@@ -24,18 +25,18 @@ def main():
     if args.verbose:
         print(f"User prompt: {args.user_prompt}\n")
 
-    for _ in range(20):
-        response, function_results = generate_content(client, messages, args.verbose)
-        if response.candidates:
-            for c in response.candidates:
-                messages.append(c.content)
-        if function_results:
-            messages.append(types.Content(role="user", parts=function_results))
-        if not response.function_calls:
-            break
-    else:
-        print("reached end of loop with no final response")
-        sys.exit(1)
+    for _ in range(MAX_ITER):
+        try:
+            final_response = generate_content(client, messages, args.verbose)
+            if final_response:
+                print("Final response:")
+                print(final_response)
+                return
+        except Exception as e:
+            print(f"Error in generate_content: {e}")
+
+    print(f"Maximum iterations ({MAX_ITER}) reached")
+    sys.exit(1)
 
 
 def generate_content(client, messages, verbose):
@@ -53,10 +54,13 @@ def generate_content(client, messages, verbose):
         print("Prompt tokens:", response.usage_metadata.prompt_token_count)
         print("Response tokens:", response.usage_metadata.candidates_token_count)
 
+    if response.candidates:
+        for candidate in response.candidates:
+            if candidate.content:
+                messages.append(candidate.content)
+
     if not response.function_calls:
-        print("Response:")
-        print(response.text)
-        return (response, [])
+        return response.text
 
     function_results = []
     for function_call in response.function_calls:
@@ -72,7 +76,7 @@ def generate_content(client, messages, verbose):
             print(f"-> {function_call_result.parts[0].function_response.response}")
 
         function_results.append(function_call_result.parts[0])
-    return (response, function_results)
+    messages.append(types.Content(role="user", parts=function_results))
 
 if __name__ == "__main__":
     main()

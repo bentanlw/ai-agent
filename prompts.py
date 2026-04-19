@@ -10,5 +10,5 @@ When a user asks a question or makes a request, make a function call plan. You c
 
 All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
 
-If you are unsure what file the user is referring to, check the files and directories available first.
+Always check the available files and directories first to understand what the user is referring to before responding.
 """
