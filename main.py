@@ -3,19 +3,23 @@ import argparse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from prompts import system_prompt
+from call_function import available_functions
+import time
 
 def call_gemini_with_retry(client, messages, retries = 5):
     for i in range(retries):
         try:
             response = client.models.generate_content(
                     model = 'gemini-2.5-flash-lite',
-                    contents = messages 
+                    contents = messages,
+                    config = types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt)
                     )
         except Exception as e:
             if "503" in str(e) and i < retries -1:
                 wait_time = (2 ** i) # Waits 1, 2, 4, 8 seconds
                 print(f"Server overloaded. Retrying in {wait_time}s...")
-                time.sleep(wwait_time)
+                time.sleep(wait_time)
                 continue
             raise e
         return response
@@ -23,7 +27,7 @@ def call_gemini_with_retry(client, messages, retries = 5):
 def main():
     load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key == None:
+    if api_key is None:
         raise RuntimeError("no API key found!")
 
     client = genai.Client(api_key=api_key)
@@ -38,7 +42,7 @@ def main():
 
     response = call_gemini_with_retry(client, messages)
 
-    if response.usage_metadata == None:
+    if response.usage_metadata is None:
         raise RuntimeError("failed API request!")
 
     if args.verbose:
@@ -46,6 +50,9 @@ def main():
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
         
+    if response.function_calls:
+        for call in response.function_calls:
+            print(f"Calling function: {call.name}({call.args})")
     print(response.text)
 
 if __name__ == "__main__":
